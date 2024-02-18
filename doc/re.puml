@@ -1,0 +1,49 @@
+@startuml
+!define Table(name,desc) class name as "desc" << (T,white) >>
+!define primary_key(x) <u>x</u>
+!define foreign_key(x) <color:red>x</color>
+
+Table(user, "User") {
+    +primary_key(id) : int
+    +username : varchar
+    +password : varchar
+}
+
+Table(task, "Task") {
+    +primary_key(id) : int
+    +foreign_key(user_id) : int
+    +title : varchar
+    +description : text
+    +status : varchar
+}
+
+Table(statistic, "Statistic") {
+    +primary_key(id) : int
+    +foreign_key(task_id) : int
+    +likes : int
+}
+
+Table(comment, "Comment") {
+    +primary_key(id) : int
+    +foreign_key(task_id) : int
+    +foreign_key(user_id) : int
+    +text : text
+    +created_at : datetime
+}
+
+Table(like, "Like") {
+    +primary_key(id) : int
+    +foreign_key(task_id) : int
+    +foreign_key(user_id) : int
+    +created_at : datetime
+}
+
+user --|{ task : "has"
+user --|{ comment : "posts"
+user --|{ like : "gives"
+
+task --|{ statistic : "has"
+task --|| like : "receives"
+task --o{ comment : "has"
+
+@enduml
