@@ -1,0 +1,9 @@
+@startuml
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+
+Person(user, "User", "")
+Container(taskTrackerApp, "Task Tracker APP", "REST API", "")
+
+Rel(user, taskTrackerApp, "Uses", "Использование сервиса")
+@enduml
