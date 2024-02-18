@@ -1,0 +1,21 @@
+@startuml
+!include <C4/C4_Context>
+!include <C4/C4_Container>
+
+Person(user, "User", "")
+Container(taskTrackerApi, "Task Tracker API", "REST API", "")
+ContainerDb(userDatabase, "User Database", "Database", "")
+Container(statisticsService, "Statistics Service", "gRPC", "")
+ContainerDb(statisticsDatabase, "Statistics Database", "ClickHouse", "")
+Container(commentService, "Comment Service", "gRPC", "")
+ContainerDb(commentDatabase, "Comment Database", "Database", "")
+Container(broker, "Брокер сообщений", "Kafka", "")
+
+Rel(user, taskTrackerApi, "Uses", "HTTPS")
+Rel(taskTrackerApi, userDatabase, "Reads/Writes")
+Rel(taskTrackerApi, statisticsService, "Invokes", "gRPC")
+Rel(taskTrackerApi, commentService, "Invokes", "gRPC")
+Rel(taskTrackerApi, broker, "Publishes", "AMQP")
+Rel(statisticsService, statisticsDatabase, "Reads/Writes")
+Rel(commentService, commentDatabase, "Reads/Writes")
+@enduml
