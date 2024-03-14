@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: userdb
+    ports:
+      - "5438:5432"
+    networks:
+      - main-network
+
+  main:
+    build: ./mainService
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_APP=./main.py
+      - FLASK_ENV=development
+      - SECRET_KEY=soa-secret-key
+      - SQLALCHEMY_DATABASE_URI=postgresql://user:password@db/userdb
+    depends_on:
+      - db
+    networks:
+      - main-network
+
+volumes:
+  postgres_data:
+
+networks:
+  main-network:
+    name: "main-network"
