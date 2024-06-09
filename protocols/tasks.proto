@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package task;
+
+message Task {
+  int32 id = 1;
+  string title = 2;
+  string description = 3;
+  string deadline = 4;
+  bool is_completed = 5;
+  int32 author_id = 6;
+}
+
+message CreateTaskRequest {
+  string title = 1;
+  string description = 2;
+  string deadline = 3; // convert accordingly in implementation
+  int32 author_id = 4;
+}
+
+message TaskResponse { Task task = 1; }
+
+message UpdateTaskRequest {
+  int32 id = 1;
+  string title = 2;
+  string description = 3;
+  string deadline = 4;
+  bool is_completed = 5;
+  int32 author_id = 6;
+}
+
+message DeleteTaskRequest {
+  int32 id = 1;
+  int32 author_id = 2;
+}
+
+message GetTaskRequest { int32 id = 1; }
+
+message TaskListRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message TaskListResponse {
+  repeated Task tasks = 1;
+  int32 total_count = 2;
+}
+
+service TaskService {
+  rpc CreateTask(CreateTaskRequest) returns (TaskResponse);
+  rpc UpdateTask(UpdateTaskRequest) returns (TaskResponse);
+  rpc DeleteTask(DeleteTaskRequest) returns (TaskResponse);
+  rpc GetTask(GetTaskRequest) returns (TaskResponse);
+  rpc ListTasks(TaskListRequest) returns (TaskListResponse);
+}
