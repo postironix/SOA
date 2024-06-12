@@ -5,3 +5,5 @@ pyjwt
 fastapi
 uvicorn
 Flask-Migrate
+grpcio
+grpcio-tools

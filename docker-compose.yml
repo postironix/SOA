@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  db:
+  users_db:
     image: postgres:13
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -14,22 +14,53 @@ services:
     networks:
       - main-network
 
-  main:
-    build: ./mainService
+  tasks_db:
+    image: postgres:13
+    volumes:
+      - taskdb_postgres_data:/var/lib/postgresql/data
+      - ./init_tasks_db.sql:/docker-entrypoint-initdb.d/init_tasks_db.sql
+    environment:
+      POSTGRES_USER: tasks_db_user
+      POSTGRES_PASSWORD: tasks_db_password
+      POSTGRES_DB: tasks_db
     ports:
-      - "5001:5001"
+      - "5439:5432"
+    networks:
+      - main-network
+
+  main:
+    build:
+      context: . 
+      dockerfile: ./mainService/Dockerfile
+    ports:
+      - "5000:5000"
     environment:
       - FLASK_APP=./main.py
       - FLASK_ENV=development
       - SECRET_KEY=soa-secret-key
-      - SQLALCHEMY_DATABASE_URI=postgresql://user:password@db/userdb
+      - SQLALCHEMY_DATABASE_URI=postgresql://user:password@users_db/userdb
+      - GRPC_SERVER_URI=task_service:5005
     depends_on:
-      - db
+      - users_db
+    networks:
+      - main-network
+
+  task_service:
+    build:
+      context: . 
+      dockerfile: ./taskService/Dockerfile
+    ports:
+      - "5005:5005"
+    environment:
+      - DATABASE_URI=postgresql://tasks_db_user:tasks_db_password@tasks_db/tasks_db
+    depends_on:
+      - tasks_db
     networks:
       - main-network
 
 volumes:
   postgres_data:
+  taskdb_postgres_data:
 
 networks:
   main-network:
