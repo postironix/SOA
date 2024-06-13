@@ -1,12 +1,14 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 import datetime
 from functools import wraps
 import os
+from kafka import KafkaProducer
 from flask_migrate import Migrate
 import grpc
+import json
 import tasks_pb2
 import tasks_pb2_grpc
 from google.protobuf.json_format import MessageToDict
@@ -20,6 +22,16 @@ grpc_client = tasks_pb2_grpc.TaskServiceStub(channel)
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+
+def createProducer():
+    while True:
+        try:
+            prod = KafkaProducer(bootstrap_servers='kafka:29092')
+            return prod
+        except:
+            continue
+
+producer = createProducer()
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -79,7 +91,7 @@ def login():
             'id': user.id,
             'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=12)
         }, app.config['SECRET_KEY'], algorithm="HS256")
-        return jsonify({'auth token': token}), 200
+        return jsonify({'auth_token': token}), 200
 
     return jsonify({'message':'Wrong credentials'}), 401
 
@@ -117,6 +129,7 @@ def create_task(current_user):
     try:
         response = grpc_client.CreateTask(task_request)
         task_dict = MessageToDict(response.task, preserving_proto_field_name=True)
+        print(task_dict, flush=True)
         return jsonify(task_dict)
     except grpc.RpcError as e:
         if e.code() == grpc.StatusCode.UNAUTHENTICATED:
@@ -183,6 +196,28 @@ def list_tasks(current_user):
         if e.code() == grpc.StatusCode.UNAUTHENTICATED:
             return jsonify({'message': 'You have not permission to this task'}), 500
         return jsonify({'message': 'Unknown error'}), 500
+
+@app.route('/like/<int:task_id>', methods=['GET'])
+@token_required
+def like(current_user, task_id):
+    value = {
+        'task_id': task_id,
+        'user_id': current_user.id,
+        'type': 'LIKE'
+    }
+    producer.send('events', json.dumps(value).encode("ascii"))
+    return Response(status=200)
+
+@app.route('/view/<int:task_id>', methods=['GET'])
+@token_required
+def view(current_user, task_id):
+    value = {
+        'task_id': task_id,
+        'user_id': current_user.id,
+        'type': 'VIEW'
+    }
+    producer.send('events', json.dumps(value).encode("ascii")) 
+    return Response(status=200)
 
 if __name__ == '__main__':
     db.create_all()

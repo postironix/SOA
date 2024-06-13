@@ -7,3 +7,4 @@ uvicorn
 Flask-Migrate
 grpcio
 grpcio-tools
+kafka-python

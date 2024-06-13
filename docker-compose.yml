@@ -18,7 +18,7 @@ services:
     image: postgres:13
     volumes:
       - taskdb_postgres_data:/var/lib/postgresql/data
-      - ./init_tasks_db.sql:/docker-entrypoint-initdb.d/init_tasks_db.sql
+      - ./taskService/init_tasks_db.sql:/docker-entrypoint-initdb.d/init_tasks_db.sql
     environment:
       POSTGRES_USER: tasks_db_user
       POSTGRES_PASSWORD: tasks_db_password
@@ -27,6 +27,85 @@ services:
       - "5439:5432"
     networks:
       - main-network
+
+  clickhouse:
+    image: yandex/clickhouse-server
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./clickhouse:/var/lib/clickhouse
+    networks:
+      - main-network
+
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:23.5
+    volumes:
+      - ./clickhouse:/var/clickhouse
+    depends_on:
+      - clickhouse
+    networks:
+      - main-network
+    entrypoint: [ '/bin/sh', '-c' ]
+    command: |
+      "
+      sleep 1
+      while ! clickhouse-client --host clickhouse -q \"SHOW databases;\"; do
+        echo waiting for clickhouse up
+        sleep 1
+      done
+      clickhouse-client --host clickhouse --queries-file /var/clickhouse/init_clickhouse.sql
+      "
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      KAFKA_JMX_PORT: 9997
+    ports:
+      - "9092:9092"
+    networks:
+      - main-network
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: 'local'
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 'kafka:29092'
+      KAFKA_CLUSTERS_0_METRICS_PORT: 9997
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    ports:
+      - "8081:8080"
+    networks:
+      - main-network
+
+  init-kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on:
+      - kafka
+    networks:
+      - main-network
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "
+      kafka-topics --bootstrap-server kafka:29092 --list
+      echo -e 'Creating kafka topics'
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic events --replication-factor 1 --partitions 1
+      echo -e 'Successfully created the following topics:'
+      kafka-topics --bootstrap-server kafka:29092 --list
+      "
 
   main:
     build:
@@ -57,6 +136,17 @@ services:
       - tasks_db
     networks:
       - main-network
+
+  statistics_service:
+    build:
+      context: .
+      dockerfile: ./statsService/Dockerfile
+    ports:
+      - "5010:5010"
+    networks:
+      - main-network
+    depends_on:
+      - clickhouse
 
 volumes:
   postgres_data:
