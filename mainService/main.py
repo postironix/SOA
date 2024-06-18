@@ -11,14 +11,18 @@ import grpc
 import json
 import tasks_pb2
 import tasks_pb2_grpc
+import stats_pb2
+import stats_pb2_grpc
 from google.protobuf.json_format import MessageToDict
 
 app = Flask(__name__)
 
 app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY")
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("SQLALCHEMY_DATABASE_URI")
-channel = grpc.insecure_channel(os.environ.get("GRPC_SERVER_URI"))
-grpc_client = tasks_pb2_grpc.TaskServiceStub(channel)
+channel_tasks = grpc.insecure_channel(os.environ.get("GRPC_SERVER_TASKS_URI"))
+grpc_client_tasks = tasks_pb2_grpc.TaskServiceStub(channel_tasks)
+channel_stats = grpc.insecure_channel(os.environ.get("GRPC_SERVER_STATS_URI"))
+grpc_client_stats = stats_pb2_grpc.StatsServiceStub(channel_stats)
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
@@ -127,7 +131,7 @@ def create_task(current_user):
         author_id=current_user.id
     )
     try:
-        response = grpc_client.CreateTask(task_request)
+        response = grpc_client_tasks.CreateTask(task_request)
         task_dict = MessageToDict(response.task, preserving_proto_field_name=True)
         print(task_dict, flush=True)
         return jsonify(task_dict)
@@ -149,7 +153,7 @@ def update_task(current_user, task_id):
         author_id=current_user.id
     )
     try:
-        response = grpc_client.UpdateTask(task_request)
+        response = grpc_client_tasks.UpdateTask(task_request)
         task_dict = MessageToDict(response.task, preserving_proto_field_name=True)
         return jsonify(task_dict)
     except grpc.RpcError as e:
@@ -162,7 +166,7 @@ def update_task(current_user, task_id):
 def delete_task(current_user, task_id):
     task_request = tasks_pb2.DeleteTaskRequest(id=task_id, author_id=current_user.id)
     try:
-        response = grpc_client.DeleteTask(task_request)
+        response = grpc_client_tasks.DeleteTask(task_request)
         task_dict = MessageToDict(response.task, preserving_proto_field_name=True)
         return jsonify(task_dict)
     except grpc.RpcError as e:
@@ -175,7 +179,7 @@ def delete_task(current_user, task_id):
 def get_task(current_user, task_id):
     task_request = tasks_pb2.GetTaskRequest(id=task_id)
     try:
-        response = grpc_client.GetTask(task_request)
+        response = grpc_client_tasks.GetTask(task_request)
         task_dict = MessageToDict(response.task, preserving_proto_field_name=True)
         return jsonify(task_dict)
     except grpc.RpcError as e:
@@ -190,27 +194,43 @@ def list_tasks(current_user):
     page_size = request.args.get('page_size', 10, type=int)
     task_list_request = tasks_pb2.TaskListRequest(page=page, page_size=page_size)
     try:
-        response = grpc_client.ListTasks(task_list_request)
+        response = grpc_client_tasks.ListTasks(task_list_request)
         return jsonify({'tasks': [MessageToDict(task, preserving_proto_field_name=True) for task in response.tasks], 'total_count': response.total_count})
     except grpc.RpcError as e:
         if e.code() == grpc.StatusCode.UNAUTHENTICATED:
             return jsonify({'message': 'You have not permission to this task'}), 500
         return jsonify({'message': 'Unknown error'}), 500
 
-@app.route('/like/<int:task_id>', methods=['GET'])
+@app.route('/like/<int:task_id>', methods=['POST'])
 @token_required
 def like(current_user, task_id):
+    task_request = tasks_pb2.GetTaskRequest(id=task_id)
+    try:
+        response = grpc_client_tasks.GetTask(task_request)
+        task_dict = MessageToDict(response.task, preserving_proto_field_name=True)
+    except:
+        return jsonify({'message': 'Task not found'}), 404
+    user = User.query.filter_by(id=task_dict['author_id']).first()
+    if not user:
+        return jsonify({'message': 'Author not found'}), 404
     value = {
         'task_id': task_id,
         'user_id': current_user.id,
+        'author': user.username,
         'type': 'LIKE'
     }
     producer.send('events', json.dumps(value).encode("ascii"))
     return Response(status=200)
 
-@app.route('/view/<int:task_id>', methods=['GET'])
+@app.route('/view/<int:task_id>', methods=['POST'])
 @token_required
 def view(current_user, task_id):
+    task_request = tasks_pb2.GetTaskRequest(id=task_id)
+    try:
+        response = grpc_client_tasks.GetTask(task_request)
+        task_dict = MessageToDict(response.task, preserving_proto_field_name=True)
+    except:
+        return jsonify({'message': 'Task not found'}), 404
     value = {
         'task_id': task_id,
         'user_id': current_user.id,
@@ -219,6 +239,85 @@ def view(current_user, task_id):
     producer.send('events', json.dumps(value).encode("ascii")) 
     return Response(status=200)
 
+@app.route('/top/tasks', methods=['GET'])
+@token_required
+def top_tasks(current_user):
+    is_likes = request.args.get('is_likes', 10, type=int)
+    stats_top_request = stats_pb2.TopTasksRequest(isLikes=is_likes == 1,)
+    response_dict = {}
+    try:
+        response = grpc_client_stats.GetTopTasks(stats_top_request)
+        response_dict = MessageToDict(response)
+    except:
+        return jsonify({'message': 'Unknown error'}), 500
+    result = []
+    if 'tasks' in response_dict:
+        for task in response_dict['tasks']:
+            task_request = tasks_pb2.GetTaskRequest(id=task['id'])
+            try:
+                response = grpc_client_tasks.GetTask(task_request)
+                task_dict = MessageToDict(response.task, preserving_proto_field_name=True)
+            except:
+                return jsonify({'message': 'Task not found'}), 404
+            user = User.query.filter_by(id=task_dict['author_id']).first()
+            if not user:
+                return jsonify({'message': 'Author not found'}), 404
+            result.append({
+                'post_id': task['id'],
+                'author': user.username,
+                'stat': task['stat']
+            })
+    return result
+    
+@app.route('/top/authors', methods=['GET'])
+@token_required
+def top_authors(current_user):
+    stats_top_request = stats_pb2.EmptyRequest()
+    resp_dict = {}
+    try:
+        response = grpc_client_stats.GetTopUsers(stats_top_request)
+        resp_dict = MessageToDict(response)
+    except grpc.RpcError as e:
+        return jsonify({'message': 'Unknown error'}), 500
+    result = []
+    if 'users' in resp_dict:
+        for user in resp_dict['users']:
+            result.append({
+                'login': user['login'],
+                'likes': user['likes']
+            })
+    return result
+
+@app.route('/task/<int:task_id>/stats', methods=['GET'])
+@token_required
+def task_stats(current_user, task_id):
+    task_request = tasks_pb2.GetTaskRequest(id=task_id)
+    try:
+        response = grpc_client_tasks.GetTask(task_request)
+        task_dict = MessageToDict(response.task, preserving_proto_field_name=True)
+    except:
+        return jsonify({'message': 'Task not found'}), 404
+    stats_request = stats_pb2.TaskStatsRequest(
+        taskId=int(task_dict['id']),
+    )
+    stats_dict = {}
+    try:
+        response = grpc_client_stats.GetTaskStats(stats_request)
+        stats_dict = MessageToDict(response, preserving_proto_field_name=True)
+    except:
+        return jsonify({'message': 'Error'}), 500
+    if 'taskStats' in stats_dict:
+        stats_dict = stats_dict['taskStats']
+    else:
+        return jsonify({'message': 'Error'}), 500 
+    likes = 0
+    views = 0
+    if 'likes' in stats_dict:
+        likes = stats_dict['likes']
+    if 'views' in stats_dict:
+        views = stats_dict['views']
+    return { 'task_id': stats_dict['id'], 'likes': likes, 'views': views }
+    
 if __name__ == '__main__':
     db.create_all()
     app.run(debug=True)
