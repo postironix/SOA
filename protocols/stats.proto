@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+
+service StatsService {
+    rpc GetTaskStats (TaskStatsRequest) returns (TaskStatsReply) {}
+
+    rpc GetTopTasks (TopTasksRequest) returns (TopTasksStatsReply) {}
+
+    rpc GetTopUsers (EmptyRequest) returns (TopUsersReply) {}
+}
+
+message EmptyRequest {
+}
+
+message TaskStatsRequest {
+    int32 taskId = 1;
+}
+
+message TopTasksRequest {
+    bool isLikes = 1;
+}
+
+message TaskStat {
+    int32 id = 1;
+    int32 stat = 2;
+}
+
+message TaskStats {
+    int32 id = 1;
+    int32 likes = 3;
+    int32 views = 4;
+}
+
+message UserStats {
+    string login = 2;
+    int32 likes = 3;
+}
+
+message TaskStatsReply {
+    optional TaskStats taskStats = 2;
+}
+
+message TopTasksStatsReply {
+    repeated TaskStat tasks = 2;
+}
+
+message TopUsersReply {
+    repeated UserStats users = 2;
+}

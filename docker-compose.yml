@@ -118,7 +118,8 @@ services:
       - FLASK_ENV=development
       - SECRET_KEY=soa-secret-key
       - SQLALCHEMY_DATABASE_URI=postgresql://user:password@users_db/userdb
-      - GRPC_SERVER_URI=task_service:5005
+      - GRPC_SERVER_TASKS_URI=task_service:5005
+      - GRPC_SERVER_STATS_URI=statistics_service:5011
     depends_on:
       - users_db
     networks:
@@ -143,6 +144,7 @@ services:
       dockerfile: ./statsService/Dockerfile
     ports:
       - "5010:5010"
+      - "5011:5011"
     networks:
       - main-network
     depends_on:

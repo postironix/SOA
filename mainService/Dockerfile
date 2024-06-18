@@ -8,6 +8,10 @@ COPY protocols/tasks.proto ./tasks.proto
 
 RUN python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. tasks.proto
 
+COPY protocols/stats.proto ./stats.proto
+
+RUN python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. stats.proto
+
 COPY ./mainService/* ./
 
 RUN pip install --no-cache-dir -r requirements.txt
